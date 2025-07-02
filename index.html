@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Générateur de Synopsis</title>
+  <script src="https://unpkg.com/vis-timeline@latest/standalone/umd/vis-timeline-graph2d.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <link href="https://unpkg.com/vis-timeline@latest/styles/vis-timeline-graph2d.min.css" rel="stylesheet" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f7f7f7;
+      padding: 20px;
+    }
+    .section {
+      background: white;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    input, button, textarea {
+      display: block;
+      margin: 10px 0;
+      padding: 6px;
+    }
+    .vis-item {
+      font-size: 14px;
+      border-radius: 8px;
+      padding: 6px;
+      color: white;
+    }
+    .vis-item.cm { background: #0099be; }
+    .vis-item.td { background: #1e8d8a; }
+    .vis-item.devoir { background: #bf3243; }
+    .vis-item a {
+      color: white;
+      text-decoration: underline;
+      font-size: 0.85em;
+    }
+    .timeline {
+      margin-top: 30px;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+    }
+    #embedCode {
+      background: #eee;
+      padding: 10px;
+      font-family: monospace;
+      border-radius: 5px;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Générateur de Synopsis</h1>
+
+  <div class="section">
+    <label>Nom(s) intervenant·e·s</label>
+    <input type="text" id="intervenant">
+  </div>
+
+  <div class="section">
+    <label>UE liée à la séquence pédagogique</label>
+    <input type="text" id="ue">
+  </div>
+
+  <div class="section">
+    <h3>CM</h3>
+    <div id="cmContainer">
+      <input type="text" class="cmInput" placeholder="Ex : 2025-09-05 | Introduction au module">
+    </div>
+    <button onclick="addCM()">+ Ajouter un CM</button>
+  </div>
+
+  <div class="section">
+    <h3>TD</h3>
+    <div id="tdContainer">
+      <input type="text" class="tdInput" placeholder="Ex : 2025-09-12 | TD 1 - Cas pratique">
+    </div>
+    <button onclick="addTD()">+ Ajouter un TD</button>
+  </div>
+
+  <div class="section">
+    <h3>Commande</h3>
+    <div id="devoirContainer">
+      <input type="date" class="devoirDate">
+      <input type="text" class="devoirTitre" placeholder="Intitulé de la commande">
+      <input type="file" class="devoirFichier" accept=".pdf">
+    </div>
+    <button onclick="addDevoir()">+ Ajouter une commande</button>
+  </div>
+
+  <div class="section">
+    <button onclick="generateTimeline()">📌 Générer le synopsis</button>
+    <button onclick="generateImage()">📸 Générer une image</button>
+    <button onclick="copyEmbed()">📋 Copier le code à intégrer dans e-formation</button>
+    <button onclick="saveJSON()">💾 Sauvegarder</button>
+    <input type="file" accept="application/json" onchange="loadJSON(event)">
+  </div>
+
+  <div id="timeline" class="timeline"></div>
+
+  <div id="embedCodeContainer" class="section" style="display:none;">
+    <h3>Code à coller dans e-formation :</h3>
+    <code id="embedCode"></code>
+  </div>
+
+  <script>
+    function addCM() {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "cmInput";
+      input.placeholder = "Ex : 2025-09-05 | Introduction au module";
+      document.getElementById("cmContainer").appendChild(input);
+    }
+
+    function addTD() {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "tdInput";
+      input.placeholder = "Ex : 2025-09-12 | TD 1 - Cas pratique";
+      document.getElementById("tdContainer").appendChild(input);
+    }
+
+    function addDevoir() {
+      const container = document.getElementById("devoirContainer");
+      const date = document.createElement("input");
+      const titre = document.createElement("input");
+      const fichier = document.createElement("input");
+
+      date.type = "date";
+      date.className = "devoirDate";
+
+      titre.type = "text";
+      titre.className = "devoirTitre";
+      titre.placeholder = "Intitulé de la commande";
+
+      fichier.type = "file";
+      fichier.className = "devoirFichier";
+      fichier.accept = ".pdf";
+
+      container.appendChild(date);
+      container.appendChild(titre);
+      container.appendChild(fichier);
+    }
+
+    function generateTimeline() {
+      const cms = [...document.querySelectorAll(".cmInput")].map(e => e.value);
+      const tds = [...document.querySelectorAll(".tdInput")].map(e => e.value);
+      const devoirDates = [...document.querySelectorAll(".devoirDate")];
+      const devoirTitres = [...document.querySelectorAll(".devoirTitre")];
+      const devoirFichiers = [...document.querySelectorAll(".devoirFichier")];
+
+      let items = [], id = 1;
+
+      cms.forEach(cm => {
+        const [date, title] = cm.split("|");
+        if (date && title) {
+          items.push({ id: id++, content: `<div style='text-align:center;'><b>📘 CM</b><br>${title.trim()}<br><small>${date.trim()}</small></div>`, start: date.trim(), className: "cm" });
+        }
+      });
+
+      tds.forEach(td => {
+        const [date, title] = td.split("|");
+        if (date && title) {
+          items.push({ id: id++, content: `<div style='text-align:center;'><b>📗 TD</b><br>${title.trim()}<br><small>${date.trim()}</small></div>`, start: date.trim(), className: "td" });
+        }
+      });
+
+      devoirDates.forEach((d, i) => {
+        if (d.value) {
+          const titre = devoirTitres[i].value || "Commande";
+          const fichier = devoirFichiers[i].files[0];
+          let lien = fichier ? URL.createObjectURL(fichier) : "";
+          let icone = fichier ? `<a href='${lien}' target='_blank'>📄 Fiche</a>` : "";
+          items.push({ id: id++, content: `<div style='text-align:center;'><b>📕 Commande</b><br>${titre}<br><small>${d.value}</small><br>${icone}</div>`, start: d.value, className: "devoir" });
+        }
+      });
+
+      const container = document.getElementById("timeline");
+      container.innerHTML = "";
+      const timeline = new vis.Timeline(container);
+      timeline.setItems(new vis.DataSet(items));
+      timeline.setOptions({ orientation: 'top', stack: false, margin: { item: 10 }, showCurrentTime: false });
+    }
+
+    function generateImage() {
+      html2canvas(document.getElementById("timeline")).then(canvas => {
+        const link = document.createElement("a");
+        link.download = "synopsis.png";
+        link.href = canvas.toDataURL();
+        link.click();
+      });
+    }
+
+    function copyEmbed() {
+      const url = window.location.href;
+      const code = `<iframe src="${url}" width="100%" height="500" style="border:1px solid #ccc;" allowfullscreen loading="lazy"></iframe>`;
+      navigator.clipboard.writeText(code).then(() => {
+        document.getElementById("embedCode").innerText = code;
+        document.getElementById("embedCodeContainer").style.display = "block";
+        alert("Code copié !");
+      });
+    }
+
+    function saveJSON() {
+      const data = {
+        intervenant: document.getElementById("intervenant").value,
+        ue: document.getElementById("ue").value,
+        cm: [...document.querySelectorAll(".cmInput")].map(e => e.value),
+        td: [...document.querySelectorAll(".tdInput")].map(e => e.value),
+        devoirs: [...document.querySelectorAll(".devoirDate")].map((d, i) => ({ date: d.value, titre: document.querySelectorAll(".devoirTitre")[i].value }))
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = "synopsis.json";
+      link.click();
+    }
+
+    function loadJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const data = JSON.parse(e.target.result);
+        document.getElementById("intervenant").value = data.intervenant || "";
+        document.getElementById("ue").value = data.ue || "";
+
+        document.getElementById("cmContainer").innerHTML = "";
+        data.cm.forEach(val => {
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "cmInput";
+          input.value = val;
+          document.getElementById("cmContainer").appendChild(input);
+        });
+
+        document.getElementById("tdContainer").innerHTML = "";
+        data.td.forEach(val => {
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "tdInput";
+          input.value = val;
+          document.getElementById("tdContainer").appendChild(input);
+        });
+
+        document.getElementById("devoirContainer").innerHTML = "";
+        data.devoirs.forEach(val => {
+          const date = document.createElement("input");
+          date.type = "date";
+          date.className = "devoirDate";
+          date.value = val.date;
+
+          const titre = document.createElement("input");
+          titre.type = "text";
+          titre.className = "devoirTitre";
+          titre.value = val.titre;
+
+          const fichier = document.createElement("input");
+          fichier.type = "file";
+          fichier.className = "devoirFichier";
+          fichier.accept = ".pdf";
+
+          const cont = document.getElementById("devoirContainer");
+          cont.appendChild(date);
+          cont.appendChild(titre);
+          cont.appendChild(fichier);
+        });
+      };
+      reader.readAsText(file);
+    }
+  </script>
+</body>
+</html>
